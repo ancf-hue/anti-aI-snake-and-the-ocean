@@ -1,0 +1,1170 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <link rel="icon" href="favicon.ico" type="image/x-icon" />
+    <title>Змея и Океан</title>
+
+    <!-- ИСПРАВЛЕНО: прелоад фото — грузится сразу, до разбора CSS -->
+    <link rel="preload" as="image" href="foto.webp" fetchpriority="high" />
+
+    <script src="https://unpkg.com/three@0.157.0/build/three.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { margin: 0; overflow: hidden; background: #001a2e; font-family: 'Inter', sans-serif; color: #fff; user-select: none; -webkit-touch-callout: none; }
+        
+        #game-root { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; pointer-events: none; }
+        #game-root canvas { display: none; pointer-events: auto; }
+        #game-root canvas.game-active { display: block; }
+
+        .page { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 0.5s, transform 0.5s; transform: scale(0.95); z-index: 100; overflow-y: auto; padding: 20px; background: rgba(0,15,30,0.95); }
+        .page.active { opacity: 1; pointer-events: all; transform: scale(1); }
+        #page-game { background: transparent !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+
+        /* ИСПРАВЛЕНО: фон-подложка + градиентное затемнение вместо чёрного ::before */
+        #page-description {
+            position: relative;
+            background-color: #06263f; /* тон океана, чтобы не было чёрной вспышки */
+            background-image:
+                linear-gradient(180deg,
+                    rgba(0,15,30,0.80) 0%,
+                    rgba(0,15,30,0.35) 38%,
+                    rgba(0,15,30,0.55) 68%,
+                    rgba(0,15,30,0.88) 100%),
+                url('foto.webp');
+            background-repeat: no-repeat, no-repeat;
+            background-position: center center, center center;
+            background-size: cover, cover;
+        }
+        /* ИСПРАВЛЕНО: псевдоэлемент-затемнитель удалён — он давал чёрный экран */
+
+        .page-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: radial-gradient(circle at center, rgba(0,40,70,0.85) 0%, rgba(0,15,30,0.95) 100%); backdrop-filter: blur(8px); z-index: -1; }
+
+        .glass-btn-3d { position: relative; padding: 18px 48px; font-size: 18px; font-weight: 800; color: #e0faff; background: rgba(255,255,255,0.04); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border: 1px solid rgba(100,220,255,0.4); border-radius: 20px; cursor: pointer; transition: all 0.3s cubic-bezier(0.25,0.8,0.25,1); box-shadow: 0 8px 32px rgba(0,180,255,0.2), inset 0 1px 0 rgba(255,255,255,0.3), inset 0 -2px 0 rgba(0,0,0,0.2), 0 0 40px rgba(0,180,255,0.15); text-transform: uppercase; letter-spacing: 1.5px; overflow: hidden; margin: 12px; z-index: 1; animation: glassPulse 3s ease-in-out infinite; touch-action: none; }
+        .glass-btn-3d::before { content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.2) 0%, transparent 60%); pointer-events: none; mix-blend-mode: overlay; animation: shineMove 6s linear infinite; }
+        .glass-btn-3d::after { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 50%; background: linear-gradient(to bottom, rgba(255,255,255,0.15), transparent); border-radius: 20px 20px 0 0; pointer-events: none; }
+        @keyframes shineMove { 0% { transform: translate(-20%,-20%) rotate(0deg); } 100% { transform: translate(20%,20%) rotate(10deg); } }
+        @keyframes glassPulse { 0%,100% { box-shadow: 0 8px 32px rgba(0,180,255,0.2), inset 0 1px 0 rgba(255,255,255,0.3), 0 0 40px rgba(0,180,255,0.15); border-color: rgba(100,220,255,0.4); } 50% { box-shadow: 0 8px 48px rgba(0,180,255,0.4), inset 0 1px 0 rgba(255,255,255,0.5), 0 0 70px rgba(0,180,255,0.3); border-color: rgba(150,235,255,0.7); } }
+        .glass-btn-3d:hover { transform: translateY(-4px) scale(1.03); border-color: rgba(100,220,255,0.9); color: #fff; text-shadow: 0 0 12px rgba(100,220,255,0.9); box-shadow: 0 12px 40px rgba(0,180,255,0.5), inset 0 1px 0 rgba(255,255,255,0.4), 0 0 80px rgba(0,180,255,0.4); animation: none; }
+        .glass-btn-3d:active { transform: translateY(1px) scale(0.97); box-shadow: 0 4px 16px rgba(0,0,0,0.4), inset 0 2px 4px rgba(0,0,0,0.3); }
+        .glass-btn-3d.secondary { color: #ffccdd; border-color: rgba(255,150,200,0.4); animation: glassPulsePink 3s ease-in-out infinite; }
+        @keyframes glassPulsePink { 0%,100% { box-shadow: 0 8px 32px rgba(255,150,200,0.2), inset 0 1px 0 rgba(255,255,255,0.3), 0 0 40px rgba(255,150,200,0.15); border-color: rgba(255,150,200,0.4); } 50% { box-shadow: 0 8px 48px rgba(255,150,200,0.4), inset 0 1px 0 rgba(255,255,255,0.5), 0 0 70px rgba(255,150,200,0.3); border-color: rgba(255,180,220,0.7); } }
+        .glass-btn-3d.secondary:hover { border-color: rgba(255,150,200,0.9); text-shadow: 0 0 12px rgba(255,150,200,0.9); animation: none; }
+
+        .glass-btn-3d.primary-submit {
+            color: #ffffff;
+            background: linear-gradient(135deg, rgba(255, 200, 0, 0.3), rgba(200, 150, 0, 0.2));
+            border-color: rgba(255, 220, 100, 0.9);
+            text-shadow: 0 0 15px rgba(255, 200, 0, 0.8);
+            box-shadow: 0 0 35px rgba(255, 200, 0, 0.6), 0 0 60px rgba(255, 200, 0, 0.3),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.4),
+                        inset 0 -2px 0 rgba(0, 0, 0, 0.2);
+            animation: goldPulse 2s ease-in-out infinite;
+            padding: 16px 40px;
+            font-size: 17px;
+            margin: 12px;
+        }
+        @keyframes goldPulse {
+            0%, 100% { box-shadow: 0 0 35px rgba(255, 200, 0, 0.6), 0 0 60px rgba(255, 200, 0, 0.3), inset 0 1px 0 rgba(255,255,255,0.4), inset 0 -2px 0 rgba(0,0,0,0.2); }
+            50% { box-shadow: 0 0 50px rgba(255, 220, 100, 0.9), 0 0 90px rgba(255, 200, 0, 0.5), inset 0 1px 0 rgba(255,255,255,0.5), inset 0 -2px 0 rgba(0,0,0,0.2); }
+        }
+        .glass-btn-3d.primary-submit:hover {
+            border-color: rgba(255, 240, 180, 1);
+            color: #ffffff;
+            animation: none;
+            box-shadow: 0 0 60px rgba(255, 220, 100, 1), 0 0 100px rgba(255, 200, 0, 0.7);
+        }
+
+        .touch-btn { font-size: 28px !important; padding: 12px 22px !important; margin: 4px !important; min-width: 60px; min-height: 60px; display: flex; align-items: center; justify-content: center; border-radius: 16px !important; box-shadow: 0 4px 20px rgba(0,180,255,0.3), inset 0 1px 0 rgba(255,255,255,0.3), 0 0 30px rgba(0,180,255,0.15) !important; animation: glassPulse 3s ease-in-out infinite !important; touch-action: none !important; }
+        .touch-btn:active { transform: scale(0.92) !important; box-shadow: 0 2px 8px rgba(0,180,255,0.6), inset 0 1px 0 rgba(255,255,255,0.2) !important; }
+
+        .title-main { font-size: clamp(36px,8vw,64px); font-weight: 800; background: linear-gradient(135deg,#66ddff 0%,#0099cc 50%,#66ddff 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-shadow: 0 0 40px rgba(0,180,255,0.4); margin-bottom: 16px; text-align: center; line-height: 1.1; z-index: 1; }
+        .support-block { width: 100%; max-width: 95vw; background: rgba(0,0,0,0.4); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.1); border-radius: 30px; padding: 10px 20px; z-index: 1; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; font-size: 13px; color: #aaddee; text-align: center; margin-top: 20px; }
+        .support-block .highlight { color: #44ccee; font-weight: 800; }
+        .support-block .phone { color: #fff; letter-spacing: 0.5px; font-weight: bold; }
+        .support-block .copy-btn { background: rgba(0,180,255,0.2); border: 1px solid #44ccee; color: #44ccee; padding: 4px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: bold; transition: all 0.2s; display: flex; align-items: center; gap: 4px; }
+        .support-block .copy-btn:hover { background: rgba(0,180,255,0.4); transform: scale(1.05); }
+        .support-block a { color: #88ddff; text-decoration: none; font-weight: bold; display: flex; align-items: center; gap: 4px; }
+
+        #game-hud { position: absolute; top: 20px; left: 20px; right: 20px; display: flex; justify-content: space-between; align-items: flex-start; pointer-events: none; z-index: 50; flex-wrap: wrap; gap: 10px; }
+        .hud-panel { background: rgba(0,20,40,0.75); backdrop-filter: blur(12px); border: 1px solid rgba(100,220,255,0.3); border-radius: 16px; padding: 12px 20px; color: #fff; font-size: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); pointer-events: auto; }
+        .hud-score { font-size: 22px; font-weight: 800; color: #ffdd88; text-shadow: 0 0 10px rgba(255,221,136,0.4); }
+        .hud-timer { font-size: 22px; font-weight: 800; color: #66ddff; text-shadow: 0 0 10px rgba(100,220,255,0.4); min-width: 80px; text-align: center; }
+        .hud-timer.warning { color: #ff8866; text-shadow: 0 0 10px rgba(255,136,102,0.6); animation: timerPulse 0.5s ease-in-out infinite; }
+        @keyframes timerPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+        .result-label { font-size: 24px; color: #aaddee; text-transform: uppercase; letter-spacing: 2px; }
+
+        #touch-controls { position: absolute; bottom: 90px; left: 0; right: 0; display: flex; justify-content: space-around; align-items: center; padding: 0 12px; z-index: 55; pointer-events: none; flex-wrap: wrap; gap: 6px; }
+        #touch-controls > div { pointer-events: auto; display: flex; gap: 8px; align-items: center; }
+
+        @media (max-width:700px) { .hud-panel { font-size: 13px; padding: 8px 14px; } .hud-score,.hud-timer { font-size: 18px; } .glass-btn-3d { padding: 14px 32px; font-size: 16px; } .touch-btn { font-size: 22px !important; padding: 10px 16px !important; min-width: 50px; min-height: 50px; } #touch-controls { bottom: 80px; padding: 0 6px; gap: 4px; } }
+    </style>
+</head>
+<body>
+
+<div id="game-root"></div>
+
+<div id="page-description" class="page active">
+    <img src="favicon.ico" alt="Логотип" style="width:144px;height:144px;margin-bottom:16px;border-radius:24px;box-shadow:0 0 30px rgba(0,180,255,0.5);border:2px solid rgba(255,255,255,0.2);z-index:1;">
+    <h1 class="title-main">Змея</h1>
+    <h1 class="title-main" style="font-size:clamp(32px,7vw,56px);margin-top:-10px;">И</h1>
+    <h1 class="title-main" style="font-size:clamp(32px,7vw,56px);margin-top:-10px;">Океан</h1>
+    <div style="flex-grow:1;"></div>
+    <button class="glass-btn-3d" id="startButton" style="margin:0 auto 16px auto;z-index:1;">🌊 На старт</button>
+    <div class="support-block">
+        <span class="highlight">🤝 ПОДДЕРЖАТЬ ПРОЕКТ 💙</span>
+        <span>Приложение бесплатное.</span>
+        <span>Перевод: <strong class="phone">8-920-227-56-76</strong></span>
+        <button class="copy-btn" onclick="copyPhone()">📋 Копировать</button>
+        <span>❤️ Спасибо!</span>
+        <a href="https://ancf-hue.github.io/" target="_blank">👉 Каталог Anti-AI Shield</a>
+    </div>
+</div>
+
+<div id="page-game" class="page" style="justify-content:flex-start;">
+    <img src="favicon.ico" alt="Логотип" style="position:absolute;top:15px;left:50%;transform:translateX(-50%);width:96px;height:96px;border-radius:16px;z-index:60;box-shadow:0 4px 12px rgba(0,0,0,0.5);border:2px solid rgba(255,255,255,0.2);">
+    <div id="game-hud">
+        <div class="hud-panel" style="display:flex;align-items:center;gap:10px;">
+            <span style="color:#aaddee;font-size:13px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">Осмотрено:</span>
+            <span class="hud-score"><span id="wrongCount">0</span>/5</span>
+        </div>
+        <div class="hud-panel hud-timer" id="timerDisplay">⏱ 3:00</div>
+    </div>
+    <div id="touch-controls">
+        <div><button class="touch-btn glass-btn-3d" data-action="left">◀</button><button class="touch-btn glass-btn-3d" data-action="right">▶</button></div>
+        <div><button class="touch-btn glass-btn-3d" data-action="forward">▲</button><button class="touch-btn glass-btn-3d" data-action="backward">▼</button></div>
+    </div>
+</div>
+
+<div id="page-result" class="page">
+    <div class="page-bg"></div>
+    <img src="favicon.ico" alt="Логотип" style="width:128px;height:128px;margin-bottom:16px;border-radius:20px;box-shadow:0 4px 12px rgba(0,0,0,0.3);border:2px solid rgba(255,255,255,0.2);">
+    <div class="result-label" id="result-label">⏱ Время вышло!</div>
+    <p id="result-text" style="color:#aaddee; text-align:center; margin-bottom:20px; max-width:500px; line-height:1.5;">Попробуйте ещё раз!</p>
+    
+    <div id="win-block" style="display: none; text-align: center; width: 100%; max-width: 500px;">
+        <button class="glass-btn-3d primary-submit" onclick="goToLeaderboard()">
+            🏆 Отправить на Доску почёта →
+        </button>
+    </div>
+
+    <div style="display:flex;flex-wrap:wrap;justify-content:center;">
+        <button class="glass-btn-3d" onclick="startGame()">🔄 Играть снова</button>
+        <button class="glass-btn-3d secondary" onclick="showPage('page-description')">🏠 В меню</button>
+    </div>
+</div>
+
+<script>
+// ============================================================
+// ИСПРАВЛЕНО: форсируем декодирование фото, чтобы не было чёрного экрана
+// ============================================================
+(function preloadHeroImage() {
+    const img = new Image();
+    img.src = 'foto.webp';
+    if (img.decode) { img.decode().catch(() => {}); }
+})();
+// ============================================================
+
+// ============================================================
+// КОНСТАНТЫ ДЛЯ ИНТЕГРАЦИИ С ДОСКОЙ ПОЧЁТА
+// ============================================================
+const MAIN_LEADERBOARD_URL = "https://anti-ii-zmeya-vse-igry.vercel.app/";
+const GAME_NAME_FOR_BOARD = "🐍 - 🌊 Змея и Океан";
+const REWARD_SNAKES_ON_WIN = 1;
+
+function createSignedToken(game, snakes) {
+    const nonce = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    const timestamp = Date.now();
+    const data = { g: game, s: snakes, t: timestamp, n: nonce };
+    const sig = btoa(unescape(encodeURIComponent(
+        data.g + '|' + data.s + '|' + data.t + '|' + data.n + '|AntonKuznetsovSnakeProject2026'
+    )));
+    data.sig = sig;
+    return btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+}
+
+window.goToLeaderboard = function() {
+    const token = createSignedToken(GAME_NAME_FOR_BOARD, REWARD_SNAKES_ON_WIN);
+    const targetUrl = MAIN_LEADERBOARD_URL + "?reward=" + token;
+    const newWindow = window.open(targetUrl, '_blank');
+    if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+        window.location.href = targetUrl;
+    }
+};
+// ============================================================
+
+const gameRoot = document.getElementById('game-root');
+
+THREE.OrbitControls = function(object, domElement) {
+    this.object = object;
+    this.domElement = domElement;
+    this.enabled = true;
+    this.target = new THREE.Vector3();
+    this.enableDamping = true;
+    this.dampingFactor = 0.08;
+    this.enableZoom = false;
+    this.enableRotate = false;
+    this.enablePan = false;
+    this.update = function() { this.object.lookAt(this.target); };
+};
+
+console.log('🌊 Игра "Змея и Океан" загружается...');
+
+function speakText(text) {
+    if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = 'ru-RU'; u.rate = 1.05; u.pitch = 1.0;
+        window.speechSynthesis.speak(u);
+    }
+}
+
+function speakWinText() {
+    if (!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const u1 = new SpeechSynthesisUtterance("Ура!");
+    u1.lang = 'ru-RU'; u1.rate = 1.0; u1.pitch = 1.15;
+    u1.onend = function() {
+        setTimeout(function() {
+            const u2 = new SpeechSynthesisUtterance("Змея выбралась на свободу.");
+            u2.lang = 'ru-RU'; u2.rate = 1.05; u2.pitch = 1.0;
+            window.speechSynthesis.speak(u2);
+        }, 1000);
+    };
+    window.speechSynthesis.speak(u1);
+}
+
+window.copyPhone = function() {
+    const phone = "8-920-227-56-76";
+    navigator.clipboard.writeText(phone).then(() => {
+        const btn = document.querySelector('.copy-btn');
+        if (btn) {
+            const orig = btn.innerHTML;
+            btn.innerHTML = "✅ Скопировано!";
+            btn.style.background = "rgba(0,180,255,0.4)";
+            btn.style.color = "#fff";
+            setTimeout(() => {
+                btn.innerHTML = orig;
+                btn.style.background = "rgba(0,180,255,0.2)";
+                btn.style.color = "#44ccee";
+            }, 2000);
+        }
+    }).catch(() => alert("Номер скопирован: " + phone));
+};
+
+let audioCtx = null;
+function initAudio() {
+    if (!audioCtx) {
+        try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+    }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+}
+function playTone(f, d, type='sine', vol=0.3) {
+    if (!audioCtx) return;
+    try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(f, audioCtx.currentTime);
+        gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + d);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + d);
+    } catch(e) {}
+}
+function playWrongSound() {
+    initAudio(); if (!audioCtx) return;
+    playTone(200,0.2,'square',0.25);
+    setTimeout(()=>playTone(150,0.3,'square',0.2),150);
+}
+function playBumpSound() {
+    initAudio(); if (!audioCtx) return;
+    playTone(120,0.08,'triangle',0.12);
+}
+function playWinSound() {
+    initAudio(); if (!audioCtx) return;
+    [523,659,784,1046,1318].forEach((f,i)=>setTimeout(()=>playTone(f,0.2,'sine',0.3),i*120));
+}
+function playEscapeSound() {
+    initAudio(); if (!audioCtx) return;
+    [300,400,500,600,700,800].forEach((f,i)=>setTimeout(()=>playTone(f,0.15,'sine',0.25),i*100));
+}
+document.addEventListener('click', initAudio, {once:true});
+document.addEventListener('keydown', initAudio, {once:true});
+
+let isGameActive = false;
+let timerInterval = null;
+let gameTimeLeft = 180;
+const MAX_TIME = 180;
+let gameOver = false;
+
+let wrongChecked = 0;
+const WRONG_TOTAL = 5;
+const TUNNEL_COUNT = 6;
+
+let enterCooldown = 0;
+let escaping = false;
+let escapeTime = 0;
+let escapeDir = new THREE.Vector3();
+let escaped = false;
+
+const _desiredCamPos = new THREE.Vector3();
+const _cameraOffset = new THREE.Vector3(0, 16, 11);
+
+const sceneColor = 0x006994;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(sceneColor);
+scene.fog = new THREE.Fog(sceneColor, 25, 90);
+
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHeight, 0.1, 300);
+camera.position.set(0, 16, 11);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.bias = 0.0005;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.3;
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+gameRoot.appendChild(renderer.domElement);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+const hemiLight = new THREE.HemisphereLight(0xbfeeff, 0x0a3a5a, 1.0);
+scene.add(hemiLight);
+const ambient = new THREE.AmbientLight(0x3388aa, 0.5);
+scene.add(ambient);
+const sunLight = new THREE.DirectionalLight(0xaaddff, 2.0);
+sunLight.position.set(20, 60, 10);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.width = 1024;
+sunLight.shadow.mapSize.height = 1024;
+sunLight.shadow.camera.near = 0.5;
+sunLight.shadow.camera.far = 150;
+sunLight.shadow.camera.left = -60;
+sunLight.shadow.camera.right = 60;
+sunLight.shadow.camera.top = 60;
+sunLight.shadow.camera.bottom = -60;
+scene.add(sunLight);
+
+const ARENA_RADIUS = 31.5;
+const floor = new THREE.Mesh(
+    new THREE.CircleGeometry(46, 64),
+    new THREE.MeshPhysicalMaterial({ color: 0xc9b27c, roughness: 1.0, metalness: 0.0, emissive: 0x223322, emissiveIntensity: 0.1 })
+);
+floor.rotation.x = -Math.PI/2;
+floor.position.y = -2;
+floor.receiveShadow = true;
+scene.add(floor);
+
+const lightRays = [];
+for (let i = 0; i < 3; i++) {
+    const ray = new THREE.Mesh(
+        new THREE.ConeGeometry(6 + i * 2, 40, 16, 1, true),
+        new THREE.MeshBasicMaterial({ color: 0xaaffee, transparent: true, opacity: 0.05, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false })
+    );
+    ray.position.set(-15 + i * 15, 18, -10 + i * 8);
+    ray.rotation.z = 0.2;
+    scene.add(ray);
+    lightRays.push(ray);
+}
+
+const seaweeds = [];
+const seaweedMat = new THREE.MeshPhysicalMaterial({ color: 0x228844, roughness: 0.6, emissive: 0x114422, emissiveIntensity: 0.3 });
+for (let i = 0; i < 20; i++) {
+    const h = 2 + Math.random() * 3;
+    const geo = new THREE.CylinderGeometry(0.08, 0.2, h, 6);
+    geo.translate(0, h / 2, 0);
+    const weed = new THREE.Mesh(geo, seaweedMat);
+    const angle = Math.random() * Math.PI * 2;
+    const r = 5 + Math.random() * (ARENA_RADIUS - 8);
+    weed.position.set(Math.cos(angle) * r, -2, Math.sin(angle) * r);
+    weed.userData = { phase: Math.random() * Math.PI * 2, speed: 0.8 + Math.random() * 0.8 };
+    scene.add(weed);
+    seaweeds.push(weed);
+}
+
+const coralColors = [0xff6688, 0xffaa44, 0xaa66ff, 0xff88cc, 0x66ddff];
+for (let i = 0; i < 15; i++) {
+    const c = coralColors[Math.floor(Math.random() * coralColors.length)];
+    const coral = new THREE.Mesh(
+        new THREE.ConeGeometry(0.4 + Math.random() * 0.4, 1 + Math.random() * 1.2, 6),
+        new THREE.MeshPhysicalMaterial({ color: c, roughness: 0.5, emissive: c, emissiveIntensity: 0.2 })
+    );
+    const angle = Math.random() * Math.PI * 2;
+    const r = 4 + Math.random() * (ARENA_RADIUS - 6);
+    coral.position.set(Math.cos(angle) * r, -1.5, Math.sin(angle) * r);
+    scene.add(coral);
+}
+
+const fishes = [];
+const fishBodyColors = [0xff6633, 0xffcc00, 0x33ccff, 0xff4488, 0x66ff66, 0xff9933, 0x9966ff, 0x00ffcc, 0xff5555, 0x55aaff];
+const fishFinColors = [0xffdd00, 0x33ffcc, 0xff66aa, 0x66aaff, 0xffaa66, 0xaaffaa, 0xffffff, 0xff8800];
+
+function createFish() {
+    const fish = new THREE.Group();
+    const bodyColor = fishBodyColors[Math.floor(Math.random() * fishBodyColors.length)];
+    let finColor = fishFinColors[Math.floor(Math.random() * fishFinColors.length)];
+    if (finColor === bodyColor) finColor = fishFinColors[(fishFinColors.indexOf(finColor) + 1) % fishFinColors.length];
+    const size = 0.8 + Math.random() * 0.6;
+    
+    const bodyMat = new THREE.MeshPhysicalMaterial({ color: bodyColor, roughness: 0.35, metalness: 0.1, emissive: bodyColor, emissiveIntensity: 0.25, clearcoat: 0.6 });
+    const finMat = new THREE.MeshPhysicalMaterial({ color: finColor, roughness: 0.4, metalness: 0.1, emissive: finColor, emissiveIntensity: 0.3, clearcoat: 0.4 });
+    
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), bodyMat);
+    body.scale.set(0.6, 0.8, 1.4);
+    fish.add(body);
+    
+    const stripe = new THREE.Mesh(new THREE.SphereGeometry(0.41, 16, 16), finMat);
+    stripe.scale.set(0.55, 0.75, 0.4);
+    stripe.position.z = 0.05;
+    fish.add(stripe);
+    
+    const tail = new THREE.Mesh(new THREE.SphereGeometry(0.4, 10, 10), finMat);
+    tail.scale.set(0.12, 0.55, 0.7);
+    tail.position.z = -0.75;
+    fish.add(tail);
+    
+    const topFin = new THREE.Mesh(new THREE.SphereGeometry(0.4, 10, 10), finMat);
+    topFin.scale.set(0.1, 0.5, 0.6);
+    topFin.position.set(0, 0.38, -0.1);
+    fish.add(topFin);
+    
+    const sideFinL = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 8), finMat);
+    sideFinL.scale.set(0.5, 0.12, 0.4);
+    sideFinL.position.set(-0.28, -0.08, 0.15);
+    sideFinL.rotation.y = 0.5;
+    fish.add(sideFinL);
+    const sideFinR = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 8), finMat);
+    sideFinR.scale.set(0.5, 0.12, 0.4);
+    sideFinR.position.set(0.28, -0.08, 0.15);
+    sideFinR.rotation.y = -0.5;
+    fish.add(sideFinR);
+    
+    const eyeWhiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const pupilMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+    const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), eyeWhiteMat);
+    eyeL.position.set(-0.19, 0.08, 0.42);
+    fish.add(eyeL);
+    const pupilL = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 6), pupilMat);
+    pupilL.position.set(-0.23, 0.08, 0.47);
+    fish.add(pupilL);
+    const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), eyeWhiteMat);
+    eyeR.position.set(0.19, 0.08, 0.42);
+    fish.add(eyeR);
+    const pupilR = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 6), pupilMat);
+    pupilR.position.set(0.23, 0.08, 0.47);
+    fish.add(pupilR);
+    
+    fish.scale.setScalar(size);
+    fish.userData = {
+        radius: 8 + Math.random() * 18,
+        speed: (0.2 + Math.random() * 0.3) * (Math.random() < 0.5 ? 1 : -1),
+        phase: Math.random() * Math.PI * 2,
+        baseY: -0.5 + Math.random() * 3,
+        tail: tail,
+        wagSpeed: 5 + Math.random() * 4,
+    };
+    scene.add(fish);
+    return fish;
+}
+
+for (let i = 0; i < 10; i++) fishes.push(createFish());
+
+function findSafeOrbitRadius() {
+    for (let tries = 0; tries < 60; tries++) {
+        const R = 6 + Math.random() * 21;
+        let safe = true;
+        for (const c of rockColliders) {
+            const d = Math.hypot(c.x, c.z);
+            if (Math.abs(d - R) < c.r + 1.5) { safe = false; break; }
+        }
+        if (safe) return R;
+    }
+    return 6.5;
+}
+
+const bubblePool = [];
+const bubbleGeo = new THREE.SphereGeometry(0.12, 8, 8);
+for (let i = 0; i < 60; i++) {
+    const b = new THREE.Mesh(bubbleGeo, new THREE.MeshBasicMaterial({ color: 0xccffff, transparent: true, opacity: 0.5 }));
+    b.visible = false;
+    b.userData = { isActive: false, speed: 0, phase: 0, baseX: 0, baseZ: 0 };
+    scene.add(b);
+    bubblePool.push(b);
+}
+function spawnBubble(x, y, z, speed) {
+    const b = bubblePool.find(bb => !bb.userData.isActive);
+    if (!b) return;
+    b.userData.isActive = true;
+    b.userData.speed = speed || (1.5 + Math.random() * 1.5);
+    b.userData.phase = Math.random() * Math.PI * 2;
+    b.userData.baseX = x;
+    b.userData.baseZ = z;
+    b.position.set(x, y, z);
+    const s = 0.6 + Math.random() * 0.9;
+    b.scale.set(s, s, s);
+    b.material.opacity = 0.5;
+    b.visible = true;
+}
+let ambientBubbleTimer = 0;
+function updateBubbles(delta, elapsed) {
+    ambientBubbleTimer -= delta;
+    if (ambientBubbleTimer <= 0 && isGameActive && !gameOver) {
+        ambientBubbleTimer = 0.3;
+        const angle = Math.random() * Math.PI * 2;
+        const r = Math.random() * ARENA_RADIUS;
+        spawnBubble(Math.cos(angle) * r, -2, Math.sin(angle) * r);
+    }
+    for (let b of bubblePool) {
+        if (!b.userData.isActive) continue;
+        b.position.y += b.userData.speed * delta;
+        b.position.x = b.userData.baseX + Math.sin(elapsed * 2 + b.userData.phase) * 0.3;
+        if (b.position.y > 12) { b.userData.isActive = false; b.visible = false; }
+    }
+}
+
+const rockColliders = [];
+function collides(x, z) {
+    for (let i = 0; i < rockColliders.length; i++) {
+        const c = rockColliders[i];
+        const dx = x - c.x, dz = z - c.z;
+        const rr = c.r + 0.8;
+        if (dx * dx + dz * dz < rr * rr) return true;
+    }
+    return false;
+}
+
+function clearInstanced(mesh) {
+    if (mesh) {
+        scene.remove(mesh);
+        mesh.geometry.dispose();
+        mesh.material.dispose();
+    }
+}
+let wallMesh = null;
+let decoyMesh = null;
+
+const rockGeoShared = new THREE.DodecahedronGeometry(1, 0);
+const wallMatShared = new THREE.MeshPhysicalMaterial({ color: 0x5a6a7a, roughness: 0.9, metalness: 0.05 });
+
+function makeInstancedRocks(transforms) {
+    const inst = new THREE.InstancedMesh(rockGeoShared, wallMatShared, transforms.length);
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const e = new THREE.Euler();
+    const p = new THREE.Vector3();
+    const sc = new THREE.Vector3();
+    transforms.forEach((t, i) => {
+        e.set(t.r * 0.3, t.r, t.r * 0.2);
+        q.setFromEuler(e);
+        p.set(t.x, t.y, t.z);
+        sc.set(t.s, t.s * 0.9, t.s);
+        m.compose(p, q, sc);
+        inst.setMatrixAt(i, m);
+    });
+    inst.castShadow = true;
+    inst.receiveShadow = true;
+    scene.add(inst);
+    return inst;
+}
+
+function buildRockWall(gapAngles) {
+    clearInstanced(wallMesh);
+    const transforms = [];
+    const wallR = 36;
+    const total = 84;
+    for (let i = 0; i < total; i++) {
+        const a = i / total * Math.PI * 2;
+        let inGap = false;
+        for (const ta of gapAngles) {
+            let d = Math.abs(a - ta);
+            if (d > Math.PI) d = 2 * Math.PI - d;
+            if (d < 0.10) { inGap = true; break; }
+        }
+        if (inGap) continue;
+        const ja = a + (Math.random() - 0.5) * 0.02;
+        transforms.push({ x: Math.cos(ja) * wallR, y: -0.8, z: Math.sin(ja) * wallR, s: 2.0 + Math.random() * 1.0, r: Math.random() * Math.PI });
+        transforms.push({ x: Math.cos(ja) * (wallR + 0.8), y: 1.4, z: Math.sin(ja) * (wallR + 0.8), s: 1.4 + Math.random() * 0.8, r: Math.random() * Math.PI });
+    }
+    wallMesh = makeInstancedRocks(transforms);
+}
+
+function buildDecoys(tunnelPlan) {
+    clearInstanced(decoyMesh);
+    rockColliders.length = 0;
+    const transforms = [];
+    const PILES = 7;
+    for (let c = 0; c < PILES; c++) {
+        let cx, cz, tries = 0;
+        do {
+            const a = Math.random() * Math.PI * 2;
+            const r = 9 + Math.random() * 16;
+            cx = Math.cos(a) * r;
+            cz = Math.sin(a) * r;
+            tries++;
+        } while (tries < 60 && tunnelPlan.some(t => Math.hypot(t.pos.x - cx, t.pos.z - cz) < 8));
+        
+        const rocksInPile = 6 + Math.floor(Math.random() * 3);
+        for (let k = 0; k < rocksInPile; k++) {
+            const ox = (Math.random() - 0.5) * 4.5;
+            const oz = (Math.random() - 0.5) * 4.5;
+            const s = 1.2 + Math.random() * 1.3;
+            const x = cx + ox, z = cz + oz;
+            transforms.push({ x, y: -1 + Math.random() * 1.5, z, s, r: Math.random() * Math.PI });
+            rockColliders.push({ x, z, r: s * 1.0 });
+        }
+    }
+    decoyMesh = makeInstancedRocks(transforms);
+}
+
+function generateTunnelPlan() {
+    const plan = [];
+    const perAngles = [];
+    for (let i = 0; i < 8; i++) perAngles.push(i / 8 * Math.PI * 2);
+    for (let i = perAngles.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [perAngles[i], perAngles[j]] = [perAngles[j], perAngles[i]];
+    }
+    const types = ['P', 'P', 'P', 'C', 'C', 'C'];
+    for (let i = types.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [types[i], types[j]] = [types[j], types[i]];
+    }
+    let pIdx = 0;
+    for (let i = 0; i < TUNNEL_COUNT; i++) {
+        if (types[i] === 'P') {
+            const a = perAngles[pIdx++];
+            plan.push({ pos: new THREE.Vector3(Math.cos(a) * 34, 0, Math.sin(a) * 34), angle: a, perimeter: true });
+        } else {
+            let px, pz, tries = 0;
+            do {
+                const a = Math.random() * Math.PI * 2;
+                const r = 10 + Math.random() * 12;
+                px = Math.cos(a) * r;
+                pz = Math.sin(a) * r;
+                tries++;
+            } while (tries < 80 && plan.some(t => Math.hypot(t.pos.x - px, t.pos.z - pz) < 10));
+            plan.push({ pos: new THREE.Vector3(px, 0, pz), angle: Math.atan2(pz, px), perimeter: false });
+        }
+    }
+    return plan;
+}
+
+const tunnels = [];
+const tunnelRockMat = new THREE.MeshPhysicalMaterial({ color: 0x4a5a6a, roughness: 0.9, metalness: 0.05 });
+const deadEndMat = new THREE.MeshPhysicalMaterial({ color: 0x3a4a5a, roughness: 1.0 });
+
+function buildTunnel(pos, angle, isCorrect) {
+    const group = new THREE.Group();
+    const postGeo = new THREE.DodecahedronGeometry(1.6, 0);
+    
+    const postL = new THREE.Mesh(postGeo, tunnelRockMat);
+    postL.position.set(-2.7, -0.6, 0); postL.scale.set(1, 1.4, 1); postL.castShadow = true;
+    group.add(postL);
+    const postR = new THREE.Mesh(postGeo, tunnelRockMat);
+    postR.position.set(2.7, -0.6, 0); postR.scale.set(1, 1.4, 1); postR.castShadow = true;
+    group.add(postR);
+    
+    const top1 = new THREE.Mesh(postGeo, tunnelRockMat);
+    top1.position.set(-1.6, 1.8, 0); top1.scale.setScalar(1.1); top1.castShadow = true;
+    group.add(top1);
+    const top2 = new THREE.Mesh(postGeo, tunnelRockMat);
+    top2.position.set(0, 2.4, 0); top2.scale.setScalar(1.3); top2.castShadow = true;
+    group.add(top2);
+    const top3 = new THREE.Mesh(postGeo, tunnelRockMat);
+    top3.position.set(1.6, 1.8, 0); top3.scale.setScalar(1.1); top3.castShadow = true;
+    group.add(top3);
+    
+    const hole = new THREE.Mesh(
+        new THREE.CircleGeometry(2.3, 24),
+        new THREE.MeshBasicMaterial({ color: 0x001018, side: THREE.DoubleSide })
+    );
+    group.add(hole);
+    
+    const tubeLen = isCorrect ? 12 : 6;
+    const tube = new THREE.Mesh(
+        new THREE.CylinderGeometry(2.4, 2.4, tubeLen, 12, 1, true),
+        new THREE.MeshPhysicalMaterial({ color: 0x334455, roughness: 0.9, side: THREE.DoubleSide })
+    );
+    tube.rotation.x = Math.PI / 2;
+    tube.position.z = -tubeLen / 2;
+    group.add(tube);
+    
+    const roofs = [];
+    for (let k = 0; k < 4; k++) {
+        const roof = new THREE.Mesh(postGeo, tunnelRockMat);
+        roof.position.set((Math.random() - 0.5) * 2, 2.2 + Math.random() * 0.6, -1.5 - k * 2.2);
+        roof.scale.setScalar(1.2 + Math.random() * 0.6);
+        roof.rotation.set(Math.random(), Math.random(), Math.random());
+        roof.castShadow = true;
+        group.add(roof);
+        roofs.push(roof);
+    }
+    
+    const sideMeshes = [];
+    for (let k = 0; k < 4; k++) {
+        const side = new THREE.Mesh(postGeo, tunnelRockMat);
+        side.position.set(k % 2 === 0 ? -2.6 : 2.6, -0.5, -2 - Math.floor(k / 2) * 3);
+        side.scale.setScalar(1.1 + Math.random() * 0.5);
+        side.rotation.set(Math.random(), Math.random(), Math.random());
+        group.add(side);
+        sideMeshes.push(side);
+    }
+    
+    if (!isCorrect) {
+        const cap = new THREE.Mesh(new THREE.CircleGeometry(2.4, 16), deadEndMat);
+        cap.position.z = -tubeLen + 0.3;
+        group.add(cap);
+        const capRock = new THREE.Mesh(postGeo, tunnelRockMat);
+        capRock.position.z = -tubeLen + 0.5;
+        capRock.scale.setScalar(1.8);
+        group.add(capRock);
+    } else {
+        const light = new THREE.Mesh(
+            new THREE.CircleGeometry(2.0, 24),
+            new THREE.MeshBasicMaterial({ color: 0xccffee, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, side: THREE.DoubleSide })
+        );
+        light.position.z = -tubeLen + 0.2;
+        group.add(light);
+    }
+    
+    const redDisc = new THREE.Mesh(
+        new THREE.CircleGeometry(0.9, 16),
+        new THREE.MeshBasicMaterial({ color: 0xff3333, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, side: THREE.DoubleSide })
+    );
+    redDisc.position.set(0, 3.6, 0.5);
+    redDisc.visible = false;
+    group.add(redDisc);
+    
+    group.position.copy(pos);
+    group.lookAt(0, 0, 0);
+    scene.add(group);
+    group.updateMatrixWorld(true);
+    
+    const wp = new THREE.Vector3();
+    postL.getWorldPosition(wp);
+    rockColliders.push({ x: wp.x, z: wp.z, r: 1.7 });
+    postR.getWorldPosition(wp);
+    rockColliders.push({ x: wp.x, z: wp.z, r: 1.7 });
+    sideMeshes.forEach(s => {
+        s.getWorldPosition(wp);
+        rockColliders.push({ x: wp.x, z: wp.z, r: 1.5 });
+    });
+    
+    return {
+        group,
+        mouth: pos.clone(),
+        inward: new THREE.Vector3(-Math.cos(angle), 0, -Math.sin(angle)),
+        outward: new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle)),
+        isCorrect,
+        checked: false,
+        redDisc,
+        tube,
+        roofs,
+    };
+}
+
+function setupTunnels(plan, correctIdx) {
+    tunnels.forEach(t => scene.remove(t.group));
+    tunnels.length = 0;
+    for (let i = 0; i < TUNNEL_COUNT; i++) {
+        tunnels.push(buildTunnel(plan[i].pos, plan[i].angle, i === correctIdx));
+    }
+}
+
+const snakeGroup = new THREE.Group();
+scene.add(snakeGroup);
+const MAX_SEGMENTS = 50;
+let activeSegments = 28;
+const BASE_SEGMENT_RADIUS = 0.48;
+const SEGMENT_SPACING = 0.55;
+const snakeBody = [];
+
+const bodyMatGlass = new THREE.MeshPhysicalMaterial({
+    color: 0xc82020, roughness: 0.05, metalness: 0.95, transparent: true, opacity: 0.75,
+    emissive: 0x880000, emissiveIntensity: 0.8, clearcoat: 1.0, clearcoatRoughness: 0.1, envMapIntensity: 1.5,
+});
+const baseRadii = [];
+for (let i = 0; i < MAX_SEGMENTS; i++) baseRadii.push(BASE_SEGMENT_RADIUS * (1 - (i / (MAX_SEGMENTS - 1)) * 0.7));
+for (let i = 0; i < MAX_SEGMENTS; i++) {
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(baseRadii[i], 16, 16), bodyMatGlass.clone());
+    snakeGroup.add(mesh);
+    snakeBody.push(mesh);
+    mesh.visible = i < activeSegments;
+}
+
+const headMat = new THREE.MeshPhysicalMaterial({
+    color: 0xe03030, roughness: 0.05, metalness: 0.95, transparent: true, opacity: 0.8,
+    emissive: 0xaa2222, emissiveIntensity: 1.0, clearcoat: 1.0,
+});
+const headGeo = new THREE.SphereGeometry(0.88, 24, 24);
+headGeo.scale(1, 0.85, 1.45);
+const head = new THREE.Mesh(headGeo, headMat);
+snakeGroup.add(head);
+
+const snakeHeadLight = new THREE.PointLight(0xff6644, 3.0, 20);
+snakeHeadLight.position.set(0, 1.2, 2.2);
+head.add(snakeHeadLight);
+
+function createEye(ox, oy, oz) {
+    const g = new THREE.Group();
+    const white = new THREE.Mesh(new THREE.SphereGeometry(0.24, 16, 16), new THREE.MeshPhysicalMaterial({ color: 0xf8f8ff, roughness: 0.1, metalness: 0.2, transparent: true, opacity: 0.9 }));
+    white.scale.set(1, 1.1, 0.9); g.add(white);
+    const iris = new THREE.Mesh(new THREE.SphereGeometry(0.15, 16, 16), new THREE.MeshPhysicalMaterial({ color: 0xffcc00, emissive: 0xffaa00, emissiveIntensity: 1.5, roughness: 0.2, metalness: 0.1 }));
+    iris.position.z = 0.17; iris.scale.set(1, 1.2, 0.5); g.add(iris);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 12), new THREE.MeshPhysicalMaterial({ color: 0x111111 }));
+    pupil.scale.set(0.5, 1.6, 0.4); pupil.position.z = 0.24; g.add(pupil);
+    g.position.set(ox, oy, oz); return g;
+}
+head.add(createEye(-0.42, 0.35, 0.78));
+head.add(createEye(0.42, 0.35, 0.78));
+
+const HEAD_RADIUS = 0.88;
+const HEAD_SCALE_Z = 1.45;
+const BACK_OFFSET = HEAD_RADIUS * HEAD_SCALE_Z + 0.05;
+
+const segmentPositions = [];
+for (let i = 0; i < MAX_SEGMENTS; i++) segmentPositions.push(new THREE.Vector3(-i * SEGMENT_SPACING, 0, 0));
+const headPos = new THREE.Vector3(0, 0, 0);
+let dirAngle = Math.PI / 2;
+let targetAngle = Math.PI / 2;
+const moveDir = new THREE.Vector3(1, 0, 0);
+const BASE_SPEED = 5.0;
+const MAX_PATH = 900;
+const pathHistory = [];
+for (let i = 0; i < MAX_PATH; i++) pathHistory.push(new THREE.Vector3(0, 0, 0));
+let pathWrite = 0, pathValid = 0;
+let speedMult = 1.0;
+
+document.addEventListener('keydown', (e) => {
+    if (!isGameActive || gameOver || escaping) return;
+    if (e.repeat) return;
+    let newAngle = null;
+    if (e.key === 'ArrowLeft' || e.key === 'a') newAngle = dirAngle + Math.PI / 2;
+    else if (e.key === 'ArrowRight' || e.key === 'd') newAngle = dirAngle - Math.PI / 2;
+    else if (e.key === 'ArrowUp' || e.key === 'w') { speedMult = Math.min(2.0, speedMult + 0.5); e.preventDefault(); return; }
+    else if (e.key === 'ArrowDown' || e.key === 's') { speedMult = Math.max(0.0, speedMult - 0.5); e.preventDefault(); return; }
+    if (newAngle !== null) { targetAngle = Math.atan2(Math.sin(newAngle), Math.cos(newAngle)); e.preventDefault(); }
+});
+
+function setupTouchControls() {
+    const btns = document.querySelectorAll('.touch-btn');
+    const actions = {
+        left: () => { targetAngle = dirAngle + Math.PI / 2; },
+        right: () => { targetAngle = dirAngle - Math.PI / 2; },
+        forward: () => { if (isGameActive && !gameOver && !escaping) speedMult = Math.min(2.0, speedMult + 0.5); },
+        backward: () => { if (isGameActive && !gameOver && !escaping) speedMult = Math.max(0.0, speedMult - 0.5); }
+    };
+    btns.forEach(btn => {
+        const action = btn.dataset.action;
+        if (!action) return;
+        const start = (e) => {
+            e.preventDefault();
+            if (!isGameActive || gameOver || escaping) return;
+            if (actions[action]) actions[action]();
+        };
+        btn.addEventListener('touchstart', start, { passive: false });
+        btn.addEventListener('touchend', (e) => e.preventDefault(), { passive: false });
+        btn.addEventListener('mousedown', start);
+        btn.addEventListener('mouseup', (e) => e.preventDefault());
+    });
+}
+setTimeout(setupTouchControls, 100);
+
+function checkTunnels() {
+    if (enterCooldown > 0 || escaping) return;
+    for (let t of tunnels) {
+        const dx = headPos.x - t.mouth.x;
+        const dz = headPos.z - t.mouth.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist < 3.0) {
+            if (t.isCorrect) {
+                escaping = true;
+                escapeTime = 0;
+                escaped = false;
+                escapeDir.copy(t.outward);
+                t.tube.visible = false;
+                t.roofs.forEach(r => r.visible = false);
+                playEscapeSound();
+            } else {
+                if (!t.checked) {
+                    t.checked = true;
+                    wrongChecked++;
+                    document.getElementById('wrongCount').textContent = wrongChecked;
+                    t.redDisc.visible = true;
+                }
+                playWrongSound();
+                headPos.copy(t.mouth).addScaledVector(t.inward, 6);
+                dirAngle = Math.atan2(t.inward.z, t.inward.x);
+                targetAngle = dirAngle;
+                enterCooldown = 1.0;
+            }
+            return;
+        }
+    }
+}
+
+function updateTimerDisplay() {
+    const m = Math.floor(gameTimeLeft / 60), s = Math.floor(gameTimeLeft % 60);
+    const d = document.getElementById('timerDisplay');
+    d.textContent = `⏱ ${m}:${s.toString().padStart(2, '0')}`;
+    d.classList.toggle('warning', gameTimeLeft <= 30);
+}
+
+function startTimer() {
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+        if (!isGameActive || gameOver || escaping) return;
+        gameTimeLeft = Math.max(0, gameTimeLeft - 1);
+        updateTimerDisplay();
+        if (gameTimeLeft <= 0) { clearInterval(timerInterval); timerInterval = null; finishGame('time'); }
+    }, 1000);
+}
+
+const clock = new THREE.Clock();
+let lastFrame = 0;
+const FPS_LIMIT = 60, FRAME_INTERVAL = 1000 / FPS_LIMIT;
+const cameraTarget = new THREE.Vector3(0, 0, 0);
+
+function animate(time) {
+    if (time - lastFrame < FRAME_INTERVAL) { requestAnimationFrame(animate); return; }
+    lastFrame = time;
+    requestAnimationFrame(animate);
+    const delta = Math.min(clock.getDelta(), 0.05);
+    const elapsed = clock.elapsedTime;
+
+    updateBubbles(delta, elapsed);
+
+    for (let w of seaweeds) {
+        w.rotation.z = Math.sin(elapsed * w.userData.speed + w.userData.phase) * 0.25;
+        w.rotation.x = Math.cos(elapsed * w.userData.speed * 0.7 + w.userData.phase) * 0.15;
+    }
+    for (let f of fishes) {
+        const ud = f.userData;
+        const a = ud.phase + elapsed * ud.speed;
+        f.position.set(
+            Math.cos(a) * ud.radius,
+            ud.baseY + Math.sin(elapsed * 2 + ud.phase) * 0.5,
+            Math.sin(a) * ud.radius
+        );
+        f.rotation.y = Math.atan2(-Math.sin(a) * Math.sign(ud.speed), Math.cos(a) * Math.sign(ud.speed));
+        ud.tail.rotation.y = Math.sin(elapsed * ud.wagSpeed + ud.phase) * 0.5;
+    }
+    for (let r of lightRays) r.rotation.y += delta * 0.1;
+
+    if (!isGameActive || gameOver) {
+        controls.update();
+        renderer.render(scene, camera);
+        return;
+    }
+
+    if (enterCooldown > 0) enterCooldown -= delta;
+
+    if (escaping) {
+        escapeTime += delta;
+        headPos.addScaledVector(escapeDir, 9 * delta);
+        headPos.y = Math.sin(escapeTime * 3) * 0.3;
+        if (Math.random() < 0.3) spawnBubble(headPos.x, headPos.y, headPos.z, 2);
+        if (escapeTime > 1.8 && !escaped) {
+            escaped = true;
+            playWinSound();
+            speakWinText();
+            finishGame('win');
+        }
+    } else {
+        let angleDiff = targetAngle - dirAngle;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        const maxTurn = delta * 12;
+        if (Math.abs(angleDiff) > maxTurn) angleDiff = Math.sign(angleDiff) * maxTurn;
+        dirAngle += angleDiff;
+
+        moveDir.x = Math.cos(dirAngle);
+        moveDir.z = Math.sin(dirAngle);
+
+        const currentSpeed = BASE_SPEED * speedMult;
+        let newX = headPos.x + moveDir.x * currentSpeed * delta;
+        let newZ = headPos.z + moveDir.z * currentSpeed * delta;
+
+        if (!collides(newX, newZ)) {
+            headPos.x = newX;
+            headPos.z = newZ;
+        } else if (!collides(newX, headPos.z)) {
+            headPos.x = newX;
+        } else if (!collides(headPos.x, newZ)) {
+            headPos.z = newZ;
+        } else {
+            playBumpSound();
+        }
+
+        const maxRadius = ARENA_RADIUS;
+        const distC = Math.sqrt(headPos.x * headPos.x + headPos.z * headPos.z);
+        if (distC > maxRadius) {
+            const r = maxRadius / distC;
+            headPos.x *= r;
+            headPos.z *= r;
+        }
+
+        headPos.y = Math.sin(elapsed * 0.8) * 0.5;
+
+        checkTunnels();
+    }
+
+    segmentPositions[0].x = headPos.x - moveDir.x * BACK_OFFSET;
+    segmentPositions[0].z = headPos.z - moveDir.z * BACK_OFFSET;
+    segmentPositions[0].y = headPos.y;
+    segmentPositions[1].x = segmentPositions[0].x - moveDir.x * SEGMENT_SPACING;
+    segmentPositions[1].z = segmentPositions[0].z - moveDir.z * SEGMENT_SPACING;
+    segmentPositions[1].y = headPos.y;
+
+    const lastP = pathHistory[pathWrite];
+    if (pathValid === 0 || segmentPositions[0].distanceTo(lastP) > 0.02) {
+        pathWrite = (pathWrite + 1) % MAX_PATH;
+        pathHistory[pathWrite].copy(segmentPositions[0]);
+        if (pathValid < MAX_PATH) pathValid++;
+    }
+
+    const cumDist = [0];
+    let total = 0;
+    for (let j = 1; j < pathValid; j++) {
+        total += pathHistory[(pathWrite - j + 1 + MAX_PATH) % MAX_PATH].distanceTo(pathHistory[(pathWrite - j + MAX_PATH) % MAX_PATH]);
+        cumDist.push(total);
+    }
+    function getPoint(distFromStart) {
+        if (distFromStart <= 0) return pathHistory[pathWrite].clone();
+        if (distFromStart >= cumDist[cumDist.length - 1]) return pathHistory[(pathWrite - cumDist.length + 1 + MAX_PATH) % MAX_PATH].clone();
+        let idx = 0;
+        while (idx < cumDist.length && cumDist[idx] < distFromStart) idx++;
+        if (idx === 0) return pathHistory[pathWrite].clone();
+        const prevIdx = (pathWrite - idx + 1 + MAX_PATH) % MAX_PATH;
+        const currIdx = (pathWrite - idx + MAX_PATH) % MAX_PATH;
+        const t = (distFromStart - cumDist[idx - 1]) / (cumDist[idx] - cumDist[idx - 1]);
+        return new THREE.Vector3().lerpVectors(pathHistory[prevIdx], pathHistory[currIdx], t);
+    }
+    for (let i = 2; i < MAX_SEGMENTS; i++) segmentPositions[i].copy(getPoint((i - 1) * SEGMENT_SPACING));
+
+    const perpX = -moveDir.z, perpZ = moveDir.x;
+    for (let i = 0; i < MAX_SEGMENTS; i++) {
+        const mesh = snakeBody[i];
+        mesh.visible = i < activeSegments;
+        if (!mesh.visible) continue;
+        const pos = segmentPositions[i];
+        const phase = i * 0.3 - elapsed * 2.5;
+        const latOff = Math.sin(phase) * 0.18;
+        const yOff = pos.y + Math.sin(phase * 0.6 + i * 0.08) * 0.18;
+        mesh.position.set(pos.x + perpX * latOff, yOff, pos.z + perpZ * latOff);
+        mesh.material.emissiveIntensity = 0.8 + Math.sin(elapsed * 2 + i * 0.3) * 0.2;
+    }
+
+    head.position.set(headPos.x, headPos.y, headPos.z);
+    head.rotation.y = Math.PI / 2 - dirAngle;
+
+    _desiredCamPos.copy(headPos).add(_cameraOffset);
+    camera.position.lerp(_desiredCamPos, 0.08);
+    cameraTarget.lerp(headPos, 0.08);
+    controls.target.copy(cameraTarget);
+
+    controls.update();
+    renderer.render(scene, camera);
+}
+
+window.showPage = function(pageId) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById(pageId).classList.add('active');
+    const canvas = renderer.domElement;
+    if (canvas) {
+        if (pageId === 'page-game') canvas.classList.add('game-active');
+        else canvas.classList.remove('game-active');
+    }
+};
+
+window.finishGame = function(reason) {
+    if (gameOver) return;
+    gameOver = true;
+    isGameActive = false;
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+    const label = document.getElementById('result-label');
+    const text = document.getElementById('result-text');
+    const winBlock = document.getElementById('win-block');
+    
+    if (reason === 'win') {
+        label.textContent = "🎉 СВОБОДА!";
+        label.style.color = "#88ffaa";
+        text.textContent = "Змея проплыла сквозь туннель и выбралась на свободу! Великолепно!";
+        if (winBlock) winBlock.style.display = 'block';
+    } else {
+        label.textContent = "⏱ Время вышло!";
+        label.style.color = "#aaddee";
+        text.textContent = "Змея не нашла туннель на свободу. Осмотрено туннелей: " + wrongChecked + " из " + WRONG_TOTAL + ". Попробуйте ещё раз!";
+        if (winBlock) winBlock.style.display = 'none';
+        speakText("Время вышло. Попробуйте ещё раз.");
+    }
+    showPage('page-result');
+};
+
+window.startGame = function() {
+    initAudio();
+    wrongChecked = 0;
+    document.getElementById('wrongCount').textContent = '0';
+    gameTimeLeft = MAX_TIME;
+    updateTimerDisplay();
+    speedMult = 1.0;
+    isGameActive = true;
+    gameOver = false;
+    activeSegments = 28;
+    enterCooldown = 0;
+    escaping = false;
+    escapeTime = 0;
+    escaped = false;
+
+    const plan = generateTunnelPlan();
+    const correctIdx = Math.floor(Math.random() * TUNNEL_COUNT);
+    
+    buildRockWall(plan.filter(t => t.perimeter).map(t => t.angle));
+    buildDecoys(plan);
+    setupTunnels(plan, correctIdx);
+    
+    fishes.forEach(f => { f.userData.radius = findSafeOrbitRadius(); });
+
+    headPos.set(0, 0, 0);
+    dirAngle = Math.PI / 2;
+    targetAngle = Math.PI / 2;
+
+    for (let i = 0; i < MAX_PATH; i++) pathHistory[i].set(0, 0, -i * 0.2 - BACK_OFFSET);
+    pathWrite = MAX_PATH - 1;
+    pathValid = MAX_PATH;
+    segmentPositions[0].set(0, 0, -BACK_OFFSET);
+    segmentPositions[1].set(0, 0, -BACK_OFFSET - SEGMENT_SPACING);
+
+    for (let i = 0; i < MAX_SEGMENTS; i++) snakeBody[i].visible = i < activeSegments;
+
+    bubblePool.forEach(b => { b.userData.isActive = false; b.visible = false; });
+
+    controls.target.copy(headPos);
+    camera.position.copy(headPos).add(_cameraOffset);
+
+    if (timerInterval) clearInterval(timerInterval);
+    startTimer();
+
+    showPage('page-game');
+    speakText("Игра началась! Туннель на свободу спрятан среди камней - каждый раз в новом месте! Осматривай каждый проём!");
+};
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+document.getElementById('startButton').addEventListener('click', startGame);
+animate(0);
+console.log('✅ Игра "Змея и Океан" загружена!');
+</script>
+</body>
+</html>
